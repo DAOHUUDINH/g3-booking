@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Group 3 — 1:1 面談予約</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0F172A;--card:#1E293B;--border:#334155;--text:#E2E8F0;--dim:#64748B;--dimmer:#475569;--muted:#334155;--accent1:#3B82F6;--accent2:#10B981;--err:#F87171;--errbg:#7F1D1D}
+body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif}
+.mono{font-family:'JetBrains Mono',monospace}
+.container{max-width:720px;margin:0 auto;padding:0 24px}
+
+/* Toast */
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:1000;padding:12px 24px;border-radius:12px;font-size:14px;font-weight:600;box-shadow:0 20px 40px rgba(0,0,0,.4);animation:slideDown .3s ease;transition:opacity .3s}
+.toast.ok{background:#064E3B;color:#6EE7B7;border:1px solid #065F46}
+.toast.err{background:var(--errbg);color:#FCA5A5;border:1px solid #991B1B}
+
+/* Progress bar */
+.progress-track{height:6px;background:var(--muted);border-radius:3px;overflow:hidden}
+.progress-bar{height:100%;background:linear-gradient(90deg,var(--accent1),var(--accent2));border-radius:3px;transition:width .5s}
+
+/* Saving indicator */
+.saving-bar{position:fixed;top:0;left:0;right:0;height:3px;z-index:1001;background:linear-gradient(90deg,var(--accent1),var(--accent2),var(--accent1));background-size:200% 100%;animation:shimmer 1.5s infinite}
+
+/* Day sections */
+.day-header{border-radius:14px 14px 0 0;padding:14px 20px;display:flex;justify-content:space-between;align-items:center}
+.day-body{background:var(--card);border:1px solid var(--border);border-top:none;border-radius:0 0 14px 14px;overflow:hidden}
+.slot{display:flex;align-items:center;padding:10px 20px;transition:background .15s;cursor:default}
+.slot.bookable{cursor:pointer}
+.slot.bookable:hover{background:var(--muted)!important}
+.slot+.slot{border-top:1px solid var(--bg)}
+
+/* Dot */
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.badge{font-size:11px;padding:2px 8px;border-radius:4px}
+
+/* Buttons */
+.btn{padding:5px 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:#94A3B8;font-size:12px;cursor:pointer;font-family:'DM Sans'}
+.btn:hover{background:var(--muted)}
+.btn-primary{background:linear-gradient(135deg,var(--accent1),var(--accent2));color:#fff;border:none;font-weight:700}
+.btn-danger{border-color:var(--errbg);color:var(--err);font-size:11px;padding:4px 12px}
+.btn-cancel-confirm{background:#DC2626;color:#fff;border:none;font-weight:600}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:999}
+.modal-box{background:var(--card);border-radius:16px;padding:28px;max-width:360px;width:90%;border:1px solid var(--border)}
+
+/* Select */
+select{width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--dimmer);background:var(--bg);color:#F8FAFC;font-size:15px;font-family:'DM Sans';cursor:pointer;outline:none}
+select option{background:var(--bg);color:#F8FAFC}
+select optgroup{color:#94A3B8;font-weight:600}
+
+/* Setup */
+.setup-input{width:100%;padding:12px 14px;border-radius:8px;border:1px solid var(--dimmer);background:var(--bg);color:#F8FAFC;font-size:14px;font-family:'DM Sans';outline:none}
+
+@keyframes slideDown{from{opacity:0;transform:translate(-50%,-20px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script>
+// ============================================================
+// CONFIG: Paste your Google Apps Script URL below
+// ============================================================
+// Option 1: Hardcode here
+let GAS_URL = "";
+// Option 2: Pass as URL parameter ?api=YOUR_GAS_URL
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get("api")) GAS_URL = urlParams.get("api");
+
+// ============================================================
+// DATA
+// ============================================================
+const GENERAL = [
+  {name:"CAO VAN CHIEN",team:"USMH"},{name:"TRAN MINH HAI",team:"USMH"},
+  {name:"VU VAN HUNG",team:"USMH"},{name:"HO THI KIM ANH",team:"USMH"},
+  {name:"TRAN QUANG NAM",team:"USMH"},{name:"TON THI NA",team:"USMH"},
+  {name:"KIYAMA",team:"YRK"},{name:"MASUDA",team:"YRK"},
+  {name:"NGUYEN VAN VUONG",team:"YRK"},
+  {name:"DO THE NHAN",team:"SourceNext"},{name:"NGUYEN VAN PHUONG",team:"SourceNext"},
+  {name:"NGUYEN QUOC HOAN",team:"SourceNext"},{name:"PHAN MINH TAM",team:"Borrow"},
+];
+const MNS_MM = [
+  {name:"DANG XUAN BINH",team:"MNS"},{name:"NGUYEN HOANG HUYNH",team:"MNS"},
+  {name:"HOANG MINH HUAN",team:"MNS"},{name:"TRAN PHUOC HA VY",team:"MNS"},
+  {name:"NGUYEN KIM MANH",team:"MM"},{name:"TRAN THI HANH",team:"MM"},
+  {name:"NGUYEN CHI BAO",team:"MM"},
+];
+const INACTIVE = [
+  {name:"TRAN MANH KHOA",reason:"未定"},
+  {name:"LE PHU SANG",reason:"Borrow"},
+  {name:"VU MANH HUNG",reason:"育休中"},
+];
+const ALL = [...GENERAL,...MNS_MM];
+
+const DAYS = [
+  {date:"2026-04-13",label:"Mon 13/4",sub:"13:00~19:00",color:"#3B82F6",pool:"general",
+   slots:Array.from({length:12},(_,i)=>`${13+Math.floor(i/2)}:${i%2===0?"00":"30"}`)},
+  {date:"2026-04-14",label:"Tue 14/4",sub:"10:00~12:00",color:"#8B5CF6",pool:"general",
+   slots:["10:00","10:30","11:00","11:30"]},
+  {date:"2026-04-15",label:"Wed 15/4",sub:"10:00~10:30, 12:00~19:00",color:"#10B981",pool:"all",
+   slots:["10:00",...Array.from({length:14},(_,i)=>`${12+Math.floor(i/2)}:${i%2===0?"00":"30"}`)]},
+];
+const TC = {
+  USMH:{bg:"#DBEAFE",text:"#1E40AF",dot:"#3B82F6"},YRK:{bg:"#FCE7F3",text:"#9D174D",dot:"#EC4899"},
+  SourceNext:{bg:"#CCFBF1",text:"#065F46",dot:"#14B8A6"},MNS:{bg:"#FEF3C7",text:"#92400E",dot:"#F59E0B"},
+  MM:{bg:"#D1FAE5",text:"#065F46",dot:"#34D399"},Borrow:{bg:"#F3F4F6",text:"#4B5563",dot:"#9CA3AF"},
+};
+
+// ============================================================
+// STATE
+// ============================================================
+let state = { bookings:{}, member:"", saving:false, syncTime:null, connected:false, loading:false, error:"" };
+let toastTimer = null;
+
+function setState(updates) {
+  Object.assign(state, updates);
+  render();
+}
+
+// ============================================================
+// API (fetch to Google Apps Script - works from normal websites)
+// ============================================================
+async function apiCall(action, params={}) {
+  const qs = new URLSearchParams({action, ...params, t:Date.now()}).toString();
+  const url = GAS_URL + "?" + qs;
+  const r = await fetch(url, {redirect:"follow"});
+  return await r.json();
+}
+
+async function loadBookings() {
+  setState({loading:true});
+  try {
+    const data = await apiCall("read");
+    if (data.status === "ok") {
+      setState({bookings:data.bookings||{}, syncTime:new Date(), connected:true, loading:false, error:""});
+      return true;
+    }
+    setState({loading:false, error:data.message||"Unknown error"});
+  } catch(e) {
+    setState({loading:false, error:e.message});
+  }
+  return false;
+}
+
+async function bookSlot(date, time) {
+  if (!state.member) { showToast("先に名前を選択してください","err"); return; }
+  const m = ALL.find(x=>x.name===state.member);
+  if (!m) return;
+  setState({saving:true});
+  try {
+    const data = await apiCall("book", {slot_key:`${date}_${time}`, member:m.name, team:m.team});
+    if (data.status==="ok") {
+      const newB = {...state.bookings};
+      newB[`${date}_${time}`] = {name:m.name,team:m.team,at:new Date().toISOString()};
+      setState({bookings:newB, saving:false});
+      showToast(`✅ ${m.name} → ${time}`);
+    } else {
+      setState({saving:false});
+      showToast(data.message||"エラー","err");
+      await loadBookings();
+    }
+  } catch(e) {
+    setState({saving:false});
+    showToast("通信エラー: "+e.message,"err");
+  }
+}
+
+async function cancelSlot(key) {
+  const b = state.bookings[key];
+  if (!b) return;
+  setState({saving:true});
+  try {
+    const data = await apiCall("cancel", {slot_key:key, member:b.name});
+    if (data.status==="ok") {
+      const newB = {...state.bookings}; delete newB[key];
+      setState({bookings:newB, saving:false});
+      showToast("キャンセルしました");
+    } else {
+      setState({saving:false});
+      showToast(data.message||"エラー","err");
+    }
+  } catch(e) { setState({saving:false}); showToast("エラー","err"); }
+  closeModal();
+}
+
+// ============================================================
+// UI HELPERS
+// ============================================================
+let currentToast = null;
+function showToast(msg,type="ok") {
+  if (toastTimer) clearTimeout(toastTimer);
+  currentToast = {msg,type};
+  render();
+  toastTimer = setTimeout(()=>{currentToast=null;render()},3500);
+}
+
+let currentModal = null;
+function openModal(key){currentModal=key;render()}
+function closeModal(){currentModal=null;render()}
+
+function endTime(t) {
+  const [h,m] = t.split(":").map(Number);
+  const em=m+30, eh=h+Math.floor(em/60);
+  return `${eh}:${(em%60).toString().padStart(2,"0")}`;
+}
+
+// ============================================================
+// CONNECT SCREEN
+// ============================================================
+function renderSetup() {
+  return `
+  <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:32px">
+    <div style="max-width:520px;width:100%">
+      <div style="text-align:center;margin-bottom:32px">
+        <div style="width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,var(--accent1),var(--accent2));display:inline-flex;align-items:center;justify-content:center;font-size:32px;margin-bottom:16px">📋</div>
+        <h1 style="font-size:24px;font-weight:700;color:#F8FAFC">G3 — 1:1 面談予約</h1>
+        <p style="color:var(--dim);font-size:14px;margin-top:8px">Google Sheetsと接続して開始</p>
+      </div>
+      <div style="background:var(--card);border-radius:14px;padding:24px;border:1px solid var(--border)">
+        <label style="font-size:12px;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:8px">Google Apps Script URL</label>
+        <input id="gasInput" class="setup-input" placeholder="https://script.google.com/macros/s/.../exec" value="${GAS_URL}">
+        <button onclick="connectGAS()" class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;margin-top:12px;border-radius:10px" ${state.loading?"disabled":""}>
+          ${state.loading?"接続中...":"🔗 接続する"}
+        </button>
+        ${state.error?`<div style="margin-top:12px;padding:12px;background:#7F1D1D22;border-radius:8px;border:1px solid var(--errbg);font-size:11px;color:#FCA5A5;word-break:break-all">Error: ${state.error}</div>`:""}
+      </div>
+      <div style="margin-top:24px;background:var(--card);border-radius:14px;padding:20px;border:1px solid var(--border)">
+        <div style="font-size:13px;font-weight:700;color:#94A3B8;margin-bottom:16px">📖 Setup（1回のみ・5分）</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          ${[
+            ["1","Google Sheet新規作成","シート名を「Bookings」にrename → Row 1に: slot_key | member | team | booked_at"],
+            ["2","Extensions → Apps Script","コード全削除 → 提供したコードを貼り付け → Save"],
+            ["3","Deploy → New deployment","Type: Web app / Execute as: Me / Who: Anyone → Deploy"],
+            ["4","URLをコピー → 上に入力","🔗 接続する をクリック → 完了！"],
+          ].map(([n,t,d])=>`
+            <div style="display:flex;gap:10px">
+              <div style="width:24px;height:24px;border-radius:12px;background:var(--accent1);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${n}</div>
+              <div><div style="font-size:13px;font-weight:600;color:#E2E8F0">${t}</div><div style="font-size:11px;color:var(--dim);margin-top:2px">${d}</div></div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+      <div style="margin-top:16px;text-align:center;font-size:11px;color:var(--muted)">
+        💡 URLにパラメータ追加で自動接続: ?api=YOUR_GAS_URL
+      </div>
+    </div>
+  </div>`;
+}
+
+function connectGAS() {
+  const input = document.getElementById("gasInput");
+  GAS_URL = input.value.trim();
+  if (!GAS_URL.includes("script.google.com")) {
+    showToast("正しいGoogle Apps Script URLを入力","err"); return;
+  }
+  try{localStorage.setItem("g3gasurl",GAS_URL)}catch(e){}
+  loadBookings();
+}
+
+// ============================================================
+// MAIN APP
+// ============================================================
+function renderApp() {
+  const b = state.bookings;
+  const bookedNames = new Set(Object.values(b).map(x=>x.name));
+  const mi = state.member ? ALL.find(m=>m.name===state.member) : null;
+  const myBooking = state.member ? Object.entries(b).find(([,v])=>v.name===state.member) : null;
+  const isMM = mi && (mi.team==="MNS"||mi.team==="MM");
+  const total = Object.keys(b).length;
+
+  let html = "";
+
+  // Saving bar
+  if (state.saving) html += `<div class="saving-bar"></div>`;
+
+  // Header
+  html += `
+  <div style="border-bottom:1px solid var(--border);padding:28px 24px 20px">
+    <div class="container">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--accent1),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:20px">📋</div>
+        <div style="flex:1"><h1 style="font-size:22px;font-weight:700;color:#F8FAFC">Group 3 — 1:1 面談予約</h1><div style="font-size:13px;color:var(--dim);margin-top:2px">2026/4/13~4/15 ・ 30分/回</div></div>
+        <div style="display:flex;align-items:center;gap:6px"><span class="dot" style="background:var(--accent2)"></span><span style="font-size:11px;color:var(--accent2)">接続済</span></div>
+      </div>
+      <div style="margin-top:16px;background:var(--card);border-radius:10px;padding:12px 16px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#94A3B8;margin-bottom:6px"><span>予約状況</span><span class="mono" style="color:#F8FAFC">${total}/${ALL.length}</span></div>
+        <div class="progress-track"><div class="progress-bar" style="width:${(total/ALL.length)*100}%"></div></div>
+      </div>
+      <div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--dimmer)">
+        <span>${state.syncTime?`最終更新: ${state.syncTime.toLocaleTimeString("ja-JP")}`:""}</span>
+        <button class="btn" onclick="loadBookings()" ${state.loading?"disabled":""}>${state.loading?"読込中...":"🔄 更新"}</button>
+      </div>
+    </div>
+  </div>`;
+
+  // Content
+  html += `<div class="container" style="padding-top:20px;padding-bottom:40px">`;
+
+  // Member select
+  html += `
+  <div style="background:var(--card);border-radius:14px;padding:16px 20px;border:1px solid var(--border);margin-bottom:24px">
+    <label style="font-size:12px;font-weight:600;color:#94A3B8;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:8px">あなたの名前を選択</label>
+    <select onchange="setState({member:this.value})">
+      <option value="">-- 名前を選んでください --</option>
+      ${["USMH","YRK","SourceNext","Borrow"].map(t=>{
+        const ms=GENERAL.filter(m=>m.team===t);
+        return ms.length?`<optgroup label="${t}">${ms.map(m=>`<option value="${m.name}" ${m.name===state.member?"selected":""}>${m.name}</option>`).join("")}</optgroup>`:"";
+      }).join("")}
+      <optgroup label="MNS（水曜のみ）">${MNS_MM.filter(m=>m.team==="MNS").map(m=>`<option value="${m.name}" ${m.name===state.member?"selected":""}>${m.name}</option>`).join("")}</optgroup>
+      <optgroup label="MM（水曜のみ）">${MNS_MM.filter(m=>m.team==="MM").map(m=>`<option value="${m.name}" ${m.name===state.member?"selected":""}>${m.name}</option>`).join("")}</optgroup>
+      <optgroup label="── 対象外 ──">${INACTIVE.map(m=>`<option disabled>${m.name}（${m.reason}）</option>`).join("")}</optgroup>
+    </select>
+    ${mi?`<div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="padding:3px 10px;border-radius:6px;font-size:12px;font-weight:600;background:${TC[mi.team]?.bg};color:${TC[mi.team]?.text}">${mi.team}</span>
+      ${myBooking?`<span style="font-size:12px;color:var(--accent2)">✅ 予約済み: ${myBooking[0].split("_")[1]}</span>`:""}
+      ${isMM?`<span style="font-size:11px;color:#F59E0B">⚠️ 水曜15/4のみ</span>`:""}
+    </div>`:""}
+  </div>`;
+
+  // Days
+  for (const day of DAYS) {
+    const restricted = isMM && day.pool==="general";
+    html += `
+    <div style="margin-bottom:20px">
+      <div class="day-header" style="background:${day.color}12;border:1px solid ${day.color}33">
+        <div><div style="font-size:16px;font-weight:700;color:${day.color}">${day.label}</div><div style="font-size:12px;color:#94A3B8;margin-top:2px">${day.sub}</div></div>
+        <div style="padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;background:${day.pool==="all"?"#064E3B":"#1E3A5F"};color:${day.pool==="all"?"#6EE7B7":"#93C5FD"}">${day.pool==="all"?"全員OK":"General"}</div>
+      </div>
+      <div class="day-body">`;
+
+    for (const time of day.slots) {
+      const k = `${day.date}_${time}`;
+      const bk = b[k];
+      const et = endTime(time);
+      const mine = bk && bk.name === state.member;
+      const canBook = state.member && !bk && !myBooking && !restricted && !state.saving;
+
+      html += `<div class="slot ${canBook?"bookable":""}" ${canBook?`onclick="bookSlot('${day.date}','${time}')"`:""}
+        style="background:${mine?"#064E3B22":"var(--card)"}">
+        <div style="width:110px;flex-shrink:0;font-size:13px;color:${bk?"var(--dimmer)":"#CBD5E1"}" class="mono">${time}~${et}</div>
+        <div style="flex:1;display:flex;align-items:center;gap:8px">`;
+
+      if (bk) {
+        html += `<span class="dot" style="background:${TC[bk.team]?.dot||"#94A3B8"}"></span>
+          <span style="font-size:14px;font-weight:500;color:${mine?"var(--accent2)":"#94A3B8"}">${bk.name}</span>
+          <span class="badge" style="background:${TC[bk.team]?.bg};color:${TC[bk.team]?.text}">${bk.team}</span>`;
+        if (mine) html += `<button class="btn btn-danger" style="margin-left:auto" onclick="event.stopPropagation();openModal('${k}')">キャンセル</button>`;
+      } else if (restricted) {
+        html += `<span style="font-size:12px;color:var(--dimmer)">—</span>`;
+      } else if (canBook) {
+        html += `<span style="font-size:13px;color:var(--dimmer)">クリックで予約</span>`;
+      } else {
+        html += `<span style="font-size:13px;color:var(--muted)">空き</span>`;
+      }
+      html += `</div></div>`;
+    }
+    html += `</div></div>`;
+  }
+
+  // Member status
+  html += `
+  <div style="background:var(--card);border-radius:14px;border:1px solid var(--border);padding:16px 20px;margin-top:8px">
+    <div style="font-size:13px;font-weight:700;color:#94A3B8;margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em">メンバー状況</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      ${ALL.map(m=>{
+        const done=bookedNames.has(m.name);
+        return `<span style="padding:4px 10px;border-radius:6px;font-size:12px;font-weight:500;background:${done?TC[m.team]?.bg:"var(--bg)"};color:${done?TC[m.team]?.text:"var(--muted)"};opacity:${done?1:0.4}">${done?"✓ ":""}${m.name}</span>`;
+      }).join("")}
+    </div>
+    <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">
+      <div style="font-size:11px;color:var(--dimmer);margin-bottom:6px">対象外</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${INACTIVE.map(m=>`<span style="padding:4px 10px;border-radius:6px;font-size:12px;background:var(--bg);color:var(--dimmer);opacity:0.45">${m.name} (${m.reason})</span>`).join("")}
+      </div>
+    </div>
+  </div>
+  <div style="text-align:center;padding:24px 0;font-size:12px;color:var(--muted)">Group 3 — GM 1:1 Scheduling</div>`;
+
+  html += `</div>`;
+
+  // Modal
+  if (currentModal) {
+    const mb = b[currentModal];
+    html += `
+    <div class="modal-overlay" onclick="closeModal()">
+      <div class="modal-box" onclick="event.stopPropagation()">
+        <div style="font-size:16px;font-weight:700;color:#F8FAFC;margin-bottom:8px">予約をキャンセルしますか？</div>
+        <div style="font-size:13px;color:#94A3B8;margin-bottom:20px">${mb?mb.name+" — ":""}${currentModal.split("_")[1]}の枠が空きになります</div>
+        <div style="display:flex;gap:10px">
+          <button class="btn" style="flex:1;padding:10px;font-size:14px" onclick="closeModal()">戻る</button>
+          <button class="btn btn-cancel-confirm" style="flex:1;padding:10px;font-size:14px;border-radius:8px" onclick="cancelSlot('${currentModal}')">キャンセル確定</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  return html;
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function render() {
+  const app = document.getElementById("app");
+
+  let html = "";
+  // Toast
+  if (currentToast) html += `<div class="toast ${currentToast.type}">${currentToast.msg}</div>`;
+
+  if (!state.connected && !GAS_URL) {
+    html += renderSetup();
+  } else if (!state.connected && GAS_URL) {
+    html += renderSetup();
+  } else {
+    html += renderApp();
+  }
+  app.innerHTML = html;
+}
+
+// ============================================================
+// INIT
+// ============================================================
+(function init() {
+  // Try localStorage
+  try { const saved = localStorage.getItem("g3gasurl"); if(saved && !GAS_URL) GAS_URL = saved; } catch(e){}
+  // Auto-connect if URL available
+  if (GAS_URL) { loadBookings(); }
+  else { render(); }
+})();
+</script>
+</body>
+</html>
